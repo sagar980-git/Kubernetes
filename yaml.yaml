@@ -1,0 +1,678 @@
+#Replicaset
+
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: pod1
+  labels: 
+    name: testpod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      name: testpod
+  template:
+    metadata:
+      labels:
+        name: testpod
+    spec: 
+      containers: 
+      - name: nginx
+        image: nginx:latest
+
+# Deployment 
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod1
+  labels: 
+    name: testpod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      name: testpod
+  template:
+    metadata:
+      labels:
+        name: testpod
+    spec: 
+      containers: 
+      - name: nginx
+        image: nginx:latest
+
+# Deployment 
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod1
+  labels:
+    name: testpod
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+        name: testpod
+  template:
+    metadata:
+      labels:
+        name: testpod
+    containers:
+    - name: nginx
+      image: nginx:latest
+    - name: mysqldb
+      image: kiran2361993/mydb:v1
+      env:
+      - name: db_name
+        value: "mysql"
+      - name: db_port
+        value: "1234"
+
+#Deployment with rolling update
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod1
+  labels:
+    name: testpod
+spec:
+  minReadySeconds: 10
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  replicas: 6
+  selector:
+    matchLabels:
+      name: testpod
+  template:
+    metadata:
+      labels:
+        name: testpod
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.29
+
+#statefullset
+
+apiVersion: apps/v1
+kind: StatefullSet
+metadata: 
+  name: web
+spec:
+  serviceName: "nginx"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.29
+        ports:
+        - containerPort: 80
+          name: web
+    volumeClaimTemplates:
+      metadata:
+        name: www
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resouces:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  ClusterIp: None
+  selector:
+    app: nginx
+  ports:
+  - port: 80
+    nam: web
+
+#readinessProbe & livelinessProbe
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe
+  labels:
+    name: rl-probe
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      name: rl-probe
+  template:
+    metadata:
+      labels:
+        name: rl-probe
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.29
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livelinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 15
+
+
+#Initcontainer
+apiVersion: apps/v1
+kind: Deployment
+metadata: 
+  name: inti-demo
+  labels:
+    app: initcontainer
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: initcontainer
+  template:
+    metadata:
+      labels:
+        app: initcontainer
+    spec:
+      initcontainers:
+      - name: wait-for-service
+        image: busybox
+        command: ["sh"; "-c"; until nslookup myservice.default.svc.cluster.local; do echo waiting for myservice; sleep 2; done]
+      - name: perform-task
+        image: busybox
+        command: ["sh"; "-c"; echo "init container task is completed" > /task/status.txt ]
+        voulumeMounts:
+        - name: shared-vol
+          mountPath: /task
+      containers:
+      - name: main-container
+        image: busybox
+        command: ["sh"; "-c"; while true; do echo "Main container running"; sleep 10; done]
+        volumeMounts:
+        - name: shared-vol
+          mountPath: /html/
+      volumes:
+      - name: shared-vol
+        emptyDir: {}
+      
+#adapter container
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adapter-container-deployment
+  labels:
+    env: prod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      env: prod
+  template:
+    metadata:
+      labels:
+        env: prod
+    spec:
+      initcontainers:
+      - name: init-gitclone
+        image: alpine/git
+        command: 
+        volumeMounts:
+        - name: nginxvol
+          mountPath: /html/
+      containers:
+      - name: adapter-container
+        image: busybox
+        command:
+        volumeMounts:
+        - name: nginxvol
+          mountPath: /html/
+      - name: main-container
+        image: nginx:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: nginxvol
+          mounthPath: /usr/share/nginx/html
+      volumes:
+      - name: nginxvol
+        emptyDir: {}
+---
+apiVersion: v1
+kind: service
+metadata:
+  name: adapter-service
+  lables:
+    env: prod
+spec:
+  type: NodePort
+  selector:
+      env: prod
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+
+#resource quota
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+  labels:
+    name: development
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: resouce-object
+  namespace: development
+spec:
+  hard:
+    requests.cpu: "1000m"
+    limits.cpu: "2000m"
+    requests.memory: "1Gi"
+    limits.memory: "2Gi"
+    pods: "20"
+    replicationcontrollers: "10"
+    resourcequotas: "10"
+    serivces: "5"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: cpu-memory-limitrange
+  namespace: development
+spec:
+  limits:
+  - max:
+      cpu: "200m"
+      memory: "200Mi"
+    min:
+      cpu: "100m"
+      memory: "100Mi"
+    type: Container
+
+#role, rolebinding
+
+openssl genrsa -out user1.key 2048
+openssl req -new -key user1.key -out user1.csr -subj "/CN=user1/OU=development"
+openssl x509 -req -in user1.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out user1.crt -days 365
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: user1-role
+  namespace: development
+rules:
+- apiGroups: ["", "apps","networking.k8s.io"]
+  resources: ["pods","deployments","replicasets","ingress","services"]
+  verbes: ["get","update","list","create","delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: user1-Rolebinding
+  namespace: development
+subjects:
+- kind: user
+  name: user1
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: user1-role
+  apiGroup: rbac.authorization.k8s.io
+
+#emptydir
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: troubleshooting
+        image: sagar980/troubleshootingtools:v1
+        volumeMounts:
+        - name: emptydir
+          path: /etc/myemptydir
+      - name: nginx
+        image: nginx:latest
+        volumeMounts:
+        - name: emptydir
+          mounthPath: /etc/myemptydir
+      volumes:
+      - name: emptydir
+        emptydir: {}
+
+#hostpath
+
+apiVersion: apps/v1
+kind: DeamonSet
+metadata:
+  name: hostpath-demo
+  labels:
+    app: hostpath
+spec:
+  selector:
+    matchLabels:
+      app: hostpath
+  template:
+    metadata:
+      labels:
+        app: hostpath
+    spec:
+      containers:
+      - name: troubleshootingtools
+        image: sagar980/troubleshootingtools:v1
+        volumeMounts:
+        - name: containerd-vol
+          mountPath: /run/containerd/containerd.sock
+      volumes:
+      - name: containerd-vol
+        hostPath:
+          path: /run/containerd/containerd.sock
+
+#EBS
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo
+  labels:
+    app: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+      volumes:
+      - name: mongo-data
+        awsElasticBlockStore:
+          volumeId: vol-0b8ef548cf5c2fce9
+          fsType: ext4
+      nodeselector:
+        kubernetes.io/hostname: i-0a44ba5df312df72d
+
+
+#PV, PVC & mount
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-1
+  labels:
+    name: pv-1
+spec:
+  storageClassName: gp2
+  persistentVolumeReclaimPolicy: Delete
+  capacity:
+    storage: 2Gi
+  accessModes:
+  - ReadWriteOnce
+  awsElasticBlockStore:
+    volumeId: <>
+    fsType: ext4
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-1
+  labels:
+    name: pvc-1
+spec:
+  storageClassName: gp2
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo
+  labels:
+    app: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+      volumes:
+      - name: mongo-data
+        persistentVolumeClaim:
+          claimName: pvc-1
+      nodeselector:
+        kubernetes.io/hostname: <>
+
+#Disable ingress
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: disable-ingress
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      run: pod1
+  policyTypes:
+  - Ingress
+
+#Disable egress
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: disable-egress
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: pod1
+  policyTypes:
+  - Egress
+
+#Disable network on namespace
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: disable-all-traffic
+  namespace: dev
+spec:
+  podSelector: {}
+  policyType:
+  - Ingress
+  - Egress
+
+#Allow network on namespace (dev):
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traffic
+  namespace: dev
+spec:
+  podSelector:
+    matchLabels:
+      ns: dev
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+        ns: dev
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          ns: dev
+# ns: dev - dev namespace pod labels
+
+#Allow Dev to Prod
+
+apiVersion: networking.k8s.io
+kind: NetworkPolicy
+metadata:
+  name: allow-dev-to-prod
+  namespace: dev
+spec:
+  podSelector:
+    matchLabels:
+      ns: dev
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          nsp: prod
+    - podSelector:
+        matchLabels:
+          ns: prod
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dev-to-prod
+  namespace: prod 
+spec:
+  podSelector:
+    matchLables:
+      ns: prod
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          nsp: dev
+    - podSelector:
+        matchLabels:
+          ns: dev
+# ns: dev/prod - dev/prod namespace pod labels
+# nsp: dev/prod - dev/prod namespace labels
+
+#Allow prod to qa at 8888 port
+
+apiVersion: networking,k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prod-to-dev-8888
+  namespace: prod
+spec:
+  podSelector:
+    matchLabels:
+      ns: prod
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLables:
+          nsp: dev
+    - podSelector:
+        matchLabels:
+          ns: dev
+    ports:
+    - protocol: TCP
+      port: 8888
+---
+apiVersion: networking.k8s.io
+kind: NetworkPolicy
+metadata:
+  name: allow-prod-to-dev-8888
+  namespace: dev
+spec:
+  podSelector:
+    matchLabels:
+      ns: dev
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          nsp: prod
+    - podSelector:
+        matchLabels:
+          ns: prod
+    ports:
+    - protocol: TCP
+      port: 8888
+
+#
+
+
+
+
+  
+
+
+
+
+
+
+
+  
