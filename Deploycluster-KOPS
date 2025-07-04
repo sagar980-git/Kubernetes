@@ -1,3 +1,0 @@
-KOPS - kubernetes operations
-
-When deploy using KOPS, in the backend it's going to create auto scaling, if some one deletes the master or node, it will automatically creates.
