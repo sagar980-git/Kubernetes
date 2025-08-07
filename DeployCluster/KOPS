@@ -1,0 +1,64 @@
+KOPS - kubernetes operations
+
+When deploy using KOPS, in the backend it's going to create auto scaling, if some one deletes the master or node, it will automatically creates.
+
+Create a t2.micro instance - name it as management server
+	aws - Ec2 - launch intance
+	We are not going to login to master or worker nodes, will manage each end everything with management server only.
+
+DNS name , Route 53 - 
+	sagar0106.xyz - purchanged.
+	aws - route53 - hosted zones - create.
+
+Create s3 bucket 
+	To store KOPS state
+	aws - s3 bucket - create bucket (Given bucket name - sagar0106.xyz)
+
+Create IAM role and assign to Ec2 instance	
+	aws - IAM - roles - create role - select ec2 - select AdministratorAccess, AmazonRoute53FullAccess, ec2FullAccess & VPCFullAccess - create (KOPSrole)
+	Select instance - actions - security - modify IAM role - slect latest created - update.
+
+Generate ssh keys - 
+	Connect to instance using ec2 instance connect
+	ssh-keygen - Here will get pub key, these keys will be used by KOPS, KOPS will apply these keys to all the nodes. 
+
+Download kops and kubectl to usr/local/bin and change permissions
+    KOPS -
+    wget https://github.com/kubernetes/kops/releases/download/v1.28.7/kops-linux-amd64
+	mv kops-linux-amd64 kops
+	chmod 777 kops
+    Kubectl - 
+    curl -LO "https://dl.k8s.io/release/v1.30.3/bin/linux/amd64/kubectl"
+	chmod 777 kubectl
+    Check versions -
+    kops version 
+	kubectl version
+
+Edit .bashrc and add env variables
+    export NAME=sagar0106.xyz
+	export KOPS_STATE_STORE=s3://sagar0106.xyz
+	export AWS_REGION=us-west-1
+	export CLUSTER_NAME=sagar0106.xyz
+	export EDITOR='/usr/bin/nano'
+
+    source .bashrc
+
+create a cluster using KOPS and generate a cluster file and save it
+
+    kops create cluster --name=sagar0106.xyz \
+    --state=s3://sagar0106.xyz --zones=us-east-1a,us-east-1b \
+    --node-count=2 --control-plane-count=1 --node-size=t3.medium --control-plane-size=t3.medium \
+    --control-plane-zones=us-east-1a --control-plane-volume-size 10 --node-volume-size 10 \
+    --ssh-public-key ~/.ssh/id_ed25519.pub \
+    --dns-zone=sagar0106.xyz --dry-run --output yaml
+
+    once you run the above command, as it's a dry run you will get a yaml code. Create a file and copy the code into the file - cluster.yaml
+
+    kops create -f cluster.yaml 
+    dig NS sagar0106.xyz +short
+    kops update cluster --name sagar0106.xyz --yes --admin
+    kops validate cluster --name sagar0106.xyz --wait 10m
+    kubectl cluster-info
+    kops delete cluster --name sagar0106.xyz --yes
+
+    
